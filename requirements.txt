@@ -1,0 +1,4 @@
+Flask==2.3.2
+prometheus_client==0.15.0
+ansible==2.14.6
+ansible-runner==2.2.0
