@@ -2,6 +2,8 @@ import ansible_runner
 import json
 from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 from flask import Flask, Response
+from icecream import ic
+import os
 
 app = Flask(__name__)
 
@@ -11,15 +13,28 @@ cpu_load_gauge = Gauge('cpu_load', 'CPU Load Average', ['load_type'])
 memory_usage_gauge = Gauge('memory_usage_mb', 'Memory usage in MB', ['type'])
 
 def run_ansible():
-    """Runs the Ansible playbook and returns the result."""
     runner = ansible_runner.run(
-        private_data_dir='.',  # Set this to the directory containing your playbook
-        playbook='gather_stats.yml',  # Your playbook file
-        inventory='hosts.ini',  # Your inventory file
+        private_data_dir='app',
+        playbook='gather_stats.yaml',
+        inventory='/home/user/home/Nextcloud2/dev/proxmox_stats/app/inventory.ini'
     )
+    return runner
+    metrics = []
+    
+    for host, stats in runner.stats.items():
+        for key, value in stats.items():
+            metric_name = f"ansible_{key}"
+            metrics.append(f"{metric_name}{{host=\"{host}\"}} {value}")
 
-    # Parse the JSON result
-    return json.loads(runner.stdout)
+    ic(metrics)
+
+    resultset = {}
+    for event in runner.events:
+        if "event_data" in event and "res" in event["event_data"]:
+            if "usage_stats_output" in event["event_data"]["res"]:
+              resultset[event["event_data"]["host"]]=event["event_data"]["res"]["usage_stats_output"]
+              print(json.dumps(event["event_data"], indent=2))
+    return {}
 
 def update_metrics():
     """Fetch system stats and update Prometheus metrics."""
@@ -56,4 +71,4 @@ def metrics():
     return Response(generate_latest(), content_type=CONTENT_TYPE_LATEST)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=8000, debug=True)

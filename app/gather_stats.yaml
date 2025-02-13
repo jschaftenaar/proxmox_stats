@@ -1,0 +1,40 @@
+- name: Gather system statistics
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Get disk usage
+      shell:  df / | awk 'NR==2 {print $3, $4}'
+      register: disk_usage
+
+    - name: Calculate disk usage percentage
+      set_fact:
+        disk_usage_percent: "{{ (disk_usage.stdout.split()[0] | int) * 100 / ((disk_usage.stdout.split()[0] | int) + (disk_usage.stdout.split()[1] | int)) }}"
+
+    - name: Get CPU Usage
+      shell: |
+        cpu1=$(awk '/^cpu / {u=$2+$4; t=$2+$4+$5+$6+$7+$8+$9} END {print u, t}' /proc/stat)
+        sleep 1
+        cpu2=$(awk '/^cpu / {u=$2+$4; t=$2+$4+$5+$6+$7+$8+$9} END {print u, t}' /proc/stat)
+        echo "$cpu1 $cpu2"
+      register: cpu_usage
+      changed_when: false
+
+    - name: Calculate CPU Usage Percentage
+      set_fact:
+        cpu_usage_percent: "{{ (cpu_usage.stdout.split()[2] | int - cpu_usage.stdout.split()[0] | int) * 100 / (cpu_usage.stdout.split()[3] | int - cpu_usage.stdout.split()[1] | int) }}"
+
+    - name: Get Memory Usage
+      shell: free | awk '/Mem:/ {print $3/$2 * 100}'
+      register: mem_usage
+      changed_when: false
+
+    - name: Collect results
+      set_fact:
+        usage_stats_output:
+          disk_usage: "{{ disk_usage_percent | float | round(2) }}"
+          cpu_usage: "{{ cpu_usage_percent | float | round(2) }}"
+          memory_usage: "{{ mem_usage.stdout | float | round(2) }}"
+
+    - name: Show debug info
+      debug:
+        var: usage_stats_output
