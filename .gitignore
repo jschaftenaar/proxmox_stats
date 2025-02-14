@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+**/artifacts
+**/inventory
+
 # C extensions
 *.so
 

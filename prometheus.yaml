@@ -5,4 +5,4 @@ global:
 scrape_configs:
   - job_name: 'python-metrics'
     static_configs:
-      - targets: ['metrics-app:8000']
+      - targets: ['host.docker.internal:8000']

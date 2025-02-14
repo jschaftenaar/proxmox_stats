@@ -2,38 +2,63 @@
   hosts: all
   gather_facts: yes
   tasks:
+
     - name: Get disk usage
       shell:  df / | awk 'NR==2 {print $3, $4}'
       register: disk_usage
 
     - name: Calculate disk usage percentage
       set_fact:
-        disk_usage_percent: "{{ (disk_usage.stdout.split()[0] | int) * 100 / ((disk_usage.stdout.split()[0] | int) + (disk_usage.stdout.split()[1] | int)) }}"
-
+        disk_used: "{{ (disk_usage.stdout.split()[0] | int) }}"
+        disk_total: "{{ (disk_usage.stdout.split()[0] | int) + (disk_usage.stdout.split()[1] | int) | int }}"
+      
     - name: Get CPU Usage
       shell: |
-        cpu1=$(awk '/^cpu / {u=$2+$4; t=$2+$4+$5+$6+$7+$8+$9} END {print u, t}' /proc/stat)
+        read cpu1_u cpu1_t < <(awk '/^cpu / {u=$2+$4; t=$2+$4+$5+$6+$7+$8+$9} END {print u, t}' /proc/stat)
         sleep 1
-        cpu2=$(awk '/^cpu / {u=$2+$4; t=$2+$4+$5+$6+$7+$8+$9} END {print u, t}' /proc/stat)
-        echo "$cpu1 $cpu2"
+        read cpu2_u cpu2_t < <(awk '/^cpu / {u=$2+$4; t=$2+$4+$5+$6+$7+$8+$9} END {print u, t}' /proc/stat)
+        echo "$cpu1_u $cpu1_t $cpu2_u $cpu2_t"
+      args:
+        executable: /bin/bash
       register: cpu_usage
       changed_when: false
 
     - name: Calculate CPU Usage Percentage
       set_fact:
-        cpu_usage_percent: "{{ (cpu_usage.stdout.split()[2] | int - cpu_usage.stdout.split()[0] | int) * 100 / (cpu_usage.stdout.split()[3] | int - cpu_usage.stdout.split()[1] | int) }}"
+        cpu_total: "{{ cpu_usage.stdout.split()[3] | int - cpu_usage.stdout.split()[1] | int }}"
+        cpu_used: "{{ cpu_usage.stdout.split()[2] | int - cpu_usage.stdout.split()[0] | int }}"
 
     - name: Get Memory Usage
-      shell: free | awk '/Mem:/ {print $3/$2 * 100}'
-      register: mem_usage
+      shell: free -b | awk '/^Mem:/ {print $2, $7}'
+      register: memory_usage
       changed_when: false
+
+    - name: Set Memory Facts
+      set_fact:
+        memory_total: "{{ memory_usage.stdout.split()[0] | int }}"
+        memory_used: "{{ memory_usage.stdout.split()[0] | int - memory_usage.stdout.split()[1] | int }}"
+
+    - name: calculate usage percentage
+      set_fact:
+        disk_usage_percentage: "{{ ((disk_used | int / disk_total | int ) * 100) }}"
+        cpu_usage_percentage: "{{ ((cpu_used | int / cpu_total | int) * 100) }}"
+        memory_usage_percentage: "{{ ((memory_used | int / memory_total | int) * 100) }}"
 
     - name: Collect results
       set_fact:
         usage_stats_output:
-          disk_usage: "{{ disk_usage_percent | float | round(2) }}"
-          cpu_usage: "{{ cpu_usage_percent | float | round(2) }}"
-          memory_usage: "{{ mem_usage.stdout | float | round(2) }}"
+          disk:
+            free: "{{ ((disk_total | int ) - (disk_used | int )) | int }}"
+            total: "{{ disk_total | int }}"
+            usage: "{{ disk_usage_percentage | float | round(2) }}"
+          cpu: 
+            free: "{{ ((cpu_total | int ) - (cpu_used | int )) | int }}"
+            total: "{{ cpu_total | int }}"
+            usage: "{{ cpu_usage_percentage | float | round (2) }}"
+          memory: 
+            free: "{{ ((memory_total | int ) - (memory_used | int )) | int }}"
+            total: "{{ memory_total | int }}"
+            usage: "{{ memory_usage_percentage | float | round (2) }}"
 
     - name: Show debug info
       debug:
